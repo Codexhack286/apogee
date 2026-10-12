@@ -194,7 +194,7 @@ if (isSidePanelSurface) {
 if (typeof chrome.tabs?.onUpdated === "function") {
   chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (tabId !== activeTabId || !changeInfo.url) return;
-    clearFocusKeyword();
+    clearKeywordOnPageChange(tabId, changeInfo.url);
   });
 }
 
@@ -360,10 +360,22 @@ function syncCappedInputMaxLengths() {
 
 syncCappedInputMaxLengths();
 
-// The side panel document survives tab switches and same-tab navigations,
-// so a leftover keyword would silently steer the next summary.
+// The side panel document survives tab switches, same-tab navigations,
+// and fresh opens on new pages, so a leftover keyword would silently
+// steer the next summary.
 function clearFocusKeyword() {
   if (focusKeywordInput) focusKeywordInput.value = "";
+}
+
+// One page-change check for the navigation listener and the restore
+// path below: clear a leftover keyword when the tab or URL moved on,
+// keep it on a same-page re-render.
+function clearKeywordOnPageChange(tabId, url) {
+  if (tabId !== lastKeywordTabId || url !== lastKeywordTabUrl) {
+    clearFocusKeyword();
+  }
+  lastKeywordTabId = tabId ?? null;
+  lastKeywordTabUrl = url ?? null;
 }
 
 // Shared counter + debounced-autosave wiring for the capped settings
@@ -447,6 +459,12 @@ let activeAskStreamId = null;
 let settingsEntryView = "homeView";
 
 let activeTabId = null;
+
+// Last tab + URL restoreTabView rendered. A fresh open on a new page
+// runs neither the tab-switch nor the navigation listener, so without
+// this check the input would keep the previous page's keyword.
+let lastKeywordTabId = null;
+let lastKeywordTabUrl = null;
 
 // Bumps on every side-panel tab restore so an in-flight restore for a
 // previous tab stands down instead of painting stale content.
@@ -2237,6 +2255,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       const stale = () => epoch !== tabViewEpoch;
       activeTabId = tab?.id;
       await ensureTabUrl(tab);
+      // Same reasoning as the tab-switch and navigation resets above, for
+      // a fresh open on another page: the panel document survives, the
+      // input still holds the old keyword, and neither listener runs.
+      clearKeywordOnPageChange(tab?.id, tab?.url);
       if (tab?.url) {
         setLinkifyOriginFromUrl(tab.url);
       }
