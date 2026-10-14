@@ -15,6 +15,8 @@ import {
   StreamCancelledError,
 } from "../lib/engines/providers.js";
 import { runStreamingJob } from "./jobs.js";
+import { renderEffectiveConfig } from "./effectiveConfig.js";
+import { getRedactedSettings } from "../lib/util/diagnostics.js";
 import {
   gateFocusKeyword,
   isFocusKeywordSupportedType,
@@ -340,6 +342,7 @@ const debugLogsCard = document.getElementById("debugLogsCard");
 const debugLogsContent = document.getElementById("debugLogsContent");
 const copyDiagnosticsBtn = document.getElementById("copyDiagnosticsBtn");
 const copyDiagnosticsHint = document.getElementById("copyDiagnosticsHint");
+const effectiveConfigList = document.getElementById("effectiveConfigList");
 const clearDebugLogsBtn = document.getElementById("clearDebugLogsBtn");
 const a11yAnnouncer = document.getElementById("a11yAnnouncer");
 const saveHistoryRadios = document.querySelectorAll(
@@ -484,7 +487,11 @@ function startSuggestedQuestionsBg(
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !currentPromptsCacheKey) return;
+  if (area !== "local") return;
+  if (changes.settings) {
+    refreshEffectiveConfigView(changes.settings.newValue);
+  }
+  if (!currentPromptsCacheKey) return;
   const change = changes[currentPromptsCacheKey];
   if (!change) return;
   const questions = Array.isArray(change.newValue) ? change.newValue : [];
@@ -721,6 +728,13 @@ async function applySettingsToUI(settings) {
 
   updateWebgpuWarning(isWebllm).catch((err) => console.error(err));
   updatePrivacyAuditUI().catch((err) => console.error(err));
+  refreshEffectiveConfigView(settings);
+}
+
+// Effective-config card (#416): one refresh path for initial apply and
+// storage updates, so the view cannot lag behind the stored setup.
+function refreshEffectiveConfigView(settings) {
+  renderEffectiveConfig(effectiveConfigList, getRedactedSettings(settings));
 }
 
 async function updatePrivacyAuditUI() {
